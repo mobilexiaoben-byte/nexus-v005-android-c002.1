@@ -1,0 +1,86 @@
+name: NEXUS V005 C002 AUTHDIAG001 - Build APK
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Extract AUTHDIAG001 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          unzip -q NEXUS_V005_C002_AUTHDIAG001_SOURCE.zip -d work
+          test -f work/V005_ANDROID_CHROMIUM_WEBVIEW_C002/settings.gradle.kts
+          echo "Source extraction: PASS"
+
+      - name: Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Gradle 9.6
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: '9.6.0'
+
+      - name: Verify Android environment
+        shell: bash
+        working-directory: work/V005_ANDROID_CHROMIUM_WEBVIEW_C002
+        run: |
+          set -euo pipefail
+          test -n "${ANDROID_HOME:-}"
+          test -d "$ANDROID_HOME/platforms/android-36"
+          test -d "$ANDROID_HOME/build-tools/36.0.0"
+          java -version
+          gradle --version
+
+      - name: Validate AUTHDIAG001
+        shell: bash
+        working-directory: work/V005_ANDROID_CHROMIUM_WEBVIEW_C002
+        run: |
+          set -euo pipefail
+          chmod +x run_core_tests.sh run_validation.sh
+          ./run_validation.sh
+
+      - name: Build APK
+        shell: bash
+        working-directory: work/V005_ANDROID_CHROMIUM_WEBVIEW_C002
+        run: |
+          set -euo pipefail
+          gradle :app:assembleDebug --stacktrace --no-daemon
+
+      - name: Prepare APK
+        shell: bash
+        working-directory: work/V005_ANDROID_CHROMIUM_WEBVIEW_C002
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+          test -f "$APK"
+          cp "$APK" NEXUS-V005-C002-AUTHDIAG001-debug.apk
+          sha256sum NEXUS-V005-C002-AUTHDIAG001-debug.apk \
+            > NEXUS-V005-C002-AUTHDIAG001-debug.apk.sha256
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v7
+        with:
+          name: NEXUS-V005-C002-AUTHDIAG001-debug
+          path: work/V005_ANDROID_CHROMIUM_WEBVIEW_C002/NEXUS-V005-C002-AUTHDIAG001-debug.apk
+          if-no-files-found: error
+
+      - name: Upload SHA256
+        uses: actions/upload-artifact@v7
+        with:
+          name: NEXUS-V005-C002-AUTHDIAG001-SHA256
+          path: work/V005_ANDROID_CHROMIUM_WEBVIEW_C002/NEXUS-V005-C002-AUTHDIAG001-debug.apk.sha256
+          if-no-files-found: error
