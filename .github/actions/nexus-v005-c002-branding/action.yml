@@ -1,0 +1,29 @@
+name: NEXUS V005/C002 branding baseline
+description: Apply the mandatory NEXUS launcher icon baseline to any extracted V005/C002 Android source before build.
+inputs:
+  project-root:
+    description: Path to the extracted Android project root.
+    required: true
+  icon-path:
+    description: Repository-relative path to the canonical 1536x1536 NEXUS PNG.
+    required: false
+    default: assets/nexus-icon.png
+
+runs:
+  using: composite
+  steps:
+    - name: Install image tooling
+      shell: bash
+      run: |
+        set -euo pipefail
+        sudo apt-get update
+        sudo apt-get install -y imagemagick
+
+    - name: Apply canonical NEXUS launcher baseline
+      shell: bash
+      run: |
+        set -euo pipefail
+        chmod +x "$GITHUB_WORKSPACE/ci/apply-nexus-v005-c002-branding.sh"
+        "$GITHUB_WORKSPACE/ci/apply-nexus-v005-c002-branding.sh" \
+          "${{ inputs.project-root }}" \
+          "$GITHUB_WORKSPACE/${{ inputs.icon-path }}"
