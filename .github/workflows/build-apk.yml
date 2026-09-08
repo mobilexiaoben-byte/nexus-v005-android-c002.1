@@ -45,6 +45,43 @@ jobs:
           java -version
           gradle --version
 
+      - name: Generate NEXUS App Icons
+        shell: bash
+        working-directory: work/V005_ANDROID_CHROMIUM_WEBVIEW_C002
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y imagemagick
+
+          ICON="$GITHUB_WORKSPACE/assets/nexus-icon.png"
+          test -f "$ICON"
+          file "$ICON" | grep -q 'PNG image data'
+          identify -format '%m %wx%h\n' "$ICON" | grep -q '^PNG 1536x1536$'
+
+          mkdir -p app/src/main/res/mipmap-{mdpi,hdpi,xhdpi,xxhdpi,xxxhdpi}
+
+          convert "$ICON" -resize 48x48 \
+            app/src/main/res/mipmap-mdpi/ic_launcher.png
+
+          convert "$ICON" -resize 72x72 \
+            app/src/main/res/mipmap-hdpi/ic_launcher.png
+
+          convert "$ICON" -resize 96x96 \
+            app/src/main/res/mipmap-xhdpi/ic_launcher.png
+
+          convert "$ICON" -resize 144x144 \
+            app/src/main/res/mipmap-xxhdpi/ic_launcher.png
+
+          convert "$ICON" -resize 192x192 \
+            app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
+
+          identify -format '%m %wx%h\n' \
+            app/src/main/res/mipmap-mdpi/ic_launcher.png \
+            app/src/main/res/mipmap-hdpi/ic_launcher.png \
+            app/src/main/res/mipmap-xhdpi/ic_launcher.png \
+            app/src/main/res/mipmap-xxhdpi/ic_launcher.png \
+            app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
+
       - name: Validate AUTHDIAG001
         shell: bash
         working-directory: work/V005_ANDROID_CHROMIUM_WEBVIEW_C002
