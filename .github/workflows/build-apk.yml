@@ -2,6 +2,13 @@ name: NEXUS V005 C002 AUTHDIAG001 - Build APK
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/build-apk.yml'
+      - 'assets/nexus-icon.png'
+      - 'NEXUS_V005_C002_AUTHDIAG001_SOURCE.zip'
 
 permissions:
   contents: read
@@ -45,43 +52,6 @@ jobs:
           java -version
           gradle --version
 
-      - name: Generate NEXUS App Icons
-        shell: bash
-        working-directory: work/V005_ANDROID_CHROMIUM_WEBVIEW_C002
-        run: |
-          set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install -y imagemagick
-
-          ICON="$GITHUB_WORKSPACE/assets/nexus-icon.png"
-          test -f "$ICON"
-          file "$ICON" | grep -q 'PNG image data'
-          identify -format '%m %wx%h\n' "$ICON" | grep -q '^PNG 1536x1536$'
-
-          mkdir -p app/src/main/res/mipmap-{mdpi,hdpi,xhdpi,xxhdpi,xxxhdpi}
-
-          convert "$ICON" -resize 48x48 \
-            app/src/main/res/mipmap-mdpi/ic_launcher.png
-
-          convert "$ICON" -resize 72x72 \
-            app/src/main/res/mipmap-hdpi/ic_launcher.png
-
-          convert "$ICON" -resize 96x96 \
-            app/src/main/res/mipmap-xhdpi/ic_launcher.png
-
-          convert "$ICON" -resize 144x144 \
-            app/src/main/res/mipmap-xxhdpi/ic_launcher.png
-
-          convert "$ICON" -resize 192x192 \
-            app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
-
-          identify -format '%m %wx%h\n' \
-            app/src/main/res/mipmap-mdpi/ic_launcher.png \
-            app/src/main/res/mipmap-hdpi/ic_launcher.png \
-            app/src/main/res/mipmap-xhdpi/ic_launcher.png \
-            app/src/main/res/mipmap-xxhdpi/ic_launcher.png \
-            app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
-
       - name: Validate AUTHDIAG001
         shell: bash
         working-directory: work/V005_ANDROID_CHROMIUM_WEBVIEW_C002
@@ -90,12 +60,109 @@ jobs:
           chmod +x run_core_tests.sh run_validation.sh
           ./run_validation.sh
 
+      - name: Force NEXUS launcher icon
+        shell: bash
+        working-directory: work/V005_ANDROID_CHROMIUM_WEBVIEW_C002
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y imagemagick
+
+          ICON="$GITHUB_WORKSPACE/assets/nexus-icon.png"
+          MANIFEST="app/src/main/AndroidManifest.xml"
+          test -f "$ICON"
+          test -f "$MANIFEST"
+          file "$ICON" | grep -q 'PNG image data'
+          identify -format '%m %wx%h\n' "$ICON" | grep -q '^PNG 1536x1536$'
+
+          echo '--- launcher resources before replacement ---'
+          find app/src/main/res -maxdepth 3 -type f \( -name 'ic_launcher*' -o -name '*launcher*' \) -print || true
+          echo '--- manifest application before replacement ---'
+          grep -n '<application\|android:icon\|android:roundIcon' "$MANIFEST" || true
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          p = Path('app/src/main/AndroidManifest.xml')
+          s = p.read_text(encoding='utf-8')
+
+          if re.search(r'android:icon="[^"]+"', s):
+              s = re.sub(r'android:icon="[^"]+"', 'android:icon="@mipmap/ic_launcher"', s, count=1)
+          else:
+              s = s.replace('<application', '<application android:icon="@mipmap/ic_launcher"', 1)
+
+          if re.search(r'android:roundIcon="[^"]+"', s):
+              s = re.sub(r'android:roundIcon="[^"]+"', 'android:roundIcon="@mipmap/ic_launcher_round"', s, count=1)
+          else:
+              s = s.replace('<application', '<application android:roundIcon="@mipmap/ic_launcher_round"', 1)
+
+          p.write_text(s, encoding='utf-8')
+          PY
+
+          # Adaptive-icon XML takes precedence on Android 8+ and was the likely
+          # reason the old/default Android icon remained visible. Remove those
+          # overrides so the generated NEXUS bitmaps are the launcher source.
+          find app/src/main/res -type f \( \
+            -path '*/mipmap-anydpi*/ic_launcher.xml' -o \
+            -path '*/mipmap-anydpi*/ic_launcher_round.xml' \
+          \) -print -delete || true
+
+          mkdir -p app/src/main/res/mipmap-{mdpi,hdpi,xhdpi,xxhdpi,xxxhdpi}
+
+          make_icon() {
+            size="$1"
+            dir="$2"
+            convert "$ICON" -resize "${size}x${size}" \
+              "app/src/main/res/${dir}/ic_launcher.png"
+            cp "app/src/main/res/${dir}/ic_launcher.png" \
+               "app/src/main/res/${dir}/ic_launcher_round.png"
+          }
+
+          make_icon 48 mipmap-mdpi
+          make_icon 72 mipmap-hdpi
+          make_icon 96 mipmap-xhdpi
+          make_icon 144 mipmap-xxhdpi
+          make_icon 192 mipmap-xxxhdpi
+
+          echo '--- manifest application after replacement ---'
+          grep -n '<application\|android:icon\|android:roundIcon' "$MANIFEST"
+          echo '--- generated NEXUS launcher icons ---'
+          identify -format '%i: %m %wx%h\n' \
+            app/src/main/res/mipmap-mdpi/ic_launcher.png \
+            app/src/main/res/mipmap-hdpi/ic_launcher.png \
+            app/src/main/res/mipmap-xhdpi/ic_launcher.png \
+            app/src/main/res/mipmap-xxhdpi/ic_launcher.png \
+            app/src/main/res/mipmap-xxxhdpi/ic_launcher.png \
+            app/src/main/res/mipmap-mdpi/ic_launcher_round.png \
+            app/src/main/res/mipmap-hdpi/ic_launcher_round.png \
+            app/src/main/res/mipmap-xhdpi/ic_launcher_round.png \
+            app/src/main/res/mipmap-xxhdpi/ic_launcher_round.png \
+            app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.png
+
       - name: Build APK
         shell: bash
         working-directory: work/V005_ANDROID_CHROMIUM_WEBVIEW_C002
         run: |
           set -euo pipefail
           gradle :app:assembleDebug --stacktrace --no-daemon
+
+      - name: Verify launcher icon in built APK
+        shell: bash
+        working-directory: work/V005_ANDROID_CHROMIUM_WEBVIEW_C002
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+          AAPT="$ANDROID_HOME/build-tools/36.0.0/aapt"
+          test -f "$APK"
+          test -x "$AAPT"
+
+          echo '--- APK application icon declarations ---'
+          "$AAPT" dump badging "$APK" | grep -E "application:|application-icon" || true
+
+          echo '--- launcher files actually packaged in APK ---'
+          unzip -l "$APK" | grep -E 'res/.*/ic_launcher(_round)?\.png' | tee /tmp/nexus-apk-icon-files.txt
+          test -s /tmp/nexus-apk-icon-files.txt
 
       - name: Prepare APK
         shell: bash
