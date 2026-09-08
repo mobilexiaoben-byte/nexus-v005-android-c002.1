@@ -1,0 +1,64 @@
+name: Enforce V005/C002 APK Branding Contract
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/**'
+      - '.github/actions/nexus-v005-c002-branding/**'
+      - 'ci/**'
+      - 'assets/nexus-icon.png'
+  pull_request:
+    paths:
+      - '.github/workflows/**'
+      - '.github/actions/nexus-v005-c002-branding/**'
+      - 'ci/**'
+      - 'assets/nexus-icon.png'
+
+permissions:
+  contents: read
+
+jobs:
+  enforce:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Verify canonical icon asset
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f assets/nexus-icon.png
+          file assets/nexus-icon.png | grep -q 'PNG image data'
+
+      - name: Reject APK workflows that bypass the branding contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          workflows = Path('.github/workflows')
+          offenders = []
+          for p in sorted(workflows.glob('*.y*ml')):
+              if p.name == 'enforce-v005-c002-branding.yml':
+                  continue
+              text = p.read_text(encoding='utf-8')
+              builds_android = bool(re.search(r'assemble(?:Debug|Release)|bundle(?:Debug|Release)', text))
+              if not builds_android:
+                  continue
+              has_apply = 'uses: ./.github/actions/nexus-v005-c002-branding' in text
+              has_verify = 'verify-nexus-v005-c002-apk.sh' in text
+              if not (has_apply and has_verify):
+                  offenders.append((p.as_posix(), has_apply, has_verify))
+
+          if offenders:
+              for path, has_apply, has_verify in offenders:
+                  print(f'FAIL {path}: apply={has_apply} verify={has_verify}')
+              raise SystemExit('Android APK workflow bypasses mandatory NEXUS V005/C002 branding contract')
+
+          print('All Android APK workflows enforce NEXUS V005/C002 branding: PASS')
+          PY
